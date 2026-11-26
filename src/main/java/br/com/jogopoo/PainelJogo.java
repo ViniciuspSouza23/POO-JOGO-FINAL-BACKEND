@@ -15,14 +15,12 @@ import java.awt.Rectangle;
 import java.awt.geom.Rectangle2D;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionAdapter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import javax.swing.AbstractAction;
 import javax.swing.ActionMap;
+import javax.swing.JButton;
 import javax.swing.JColorChooser;
 import javax.swing.InputMap;
 import javax.swing.JPanel;
@@ -39,6 +37,7 @@ public class PainelJogo extends JPanel {
     private static final int INTERVALO_RENDERIZACAO_MS = 16;
     private static final long PASSO_MOVIMENTO_NS = 120_000_000L;
     private static final long DURACAO_ENTRADA_NS = 650_000_000L;
+    private static final long DURACAO_FEEDBACK_NS = 450_000_000L;
     private static final Rectangle BOTAO_COR = new Rectangle(264, 14, 166, 36);
     private static final Color FUNDO = new Color(11, 18, 32);
     private static final Color CABECALHO = new Color(15, 23, 42);
@@ -53,6 +52,8 @@ public class PainelJogo extends JPanel {
 
     private final Timer temporizador = new Timer(INTERVALO_RENDERIZACAO_MS, event -> atualizarJogo());
     private final List<ElementoJogo> elementos = new ArrayList<>();
+    private final JButton botaoCor = criarBotaoCor();
+    private final JButton botaoAcao = criarBotaoAcao();
 
     private Cobrinha cobrinha;
     private Comida comida;
@@ -60,12 +61,11 @@ public class PainelJogo extends JPanel {
     private int pontuacao;
     private boolean venceu;
     private Color corSelecionada = Cobrinha.COR_PADRAO;
-    private boolean sobreBotaoCor;
-    private boolean sobreBotaoIniciar;
     private Rectangle botaoIniciar;
     private long ultimoQuadroNs;
     private long tempoAcumuladoNs;
     private long inicioEntradaNs;
+    private long inicioFeedbackPontuacaoNs;
 
     public PainelJogo() {
         setLayout(new BorderLayout());
@@ -73,48 +73,48 @@ public class PainelJogo extends JPanel {
         setPreferredSize(new Dimension(
                 COLUNAS * TAMANHO_CELULA,
                 LINHAS * TAMANHO_CELULA + ALTURA_CABECALHO));
+        setLayout(null);
+        add(botaoCor);
+        add(botaoAcao);
+        botaoCor.setBounds(BOTAO_COR);
+        botaoCor.setOpaque(false);
+        botaoCor.setContentAreaFilled(false);
+        botaoCor.setBorderPainted(false);
+        botaoCor.setFocusable(true);
+        botaoCor.setToolTipText("Escolher cor da cobrinha");
+        botaoCor.getAccessibleContext().setAccessibleName("Trocar cor da cobrinha");
+
+        botaoAcao.setBounds(139, 400, 322, 37);
+        botaoAcao.setOpaque(false);
+        botaoAcao.setContentAreaFilled(false);
+        botaoAcao.setBorderPainted(false);
+        botaoAcao.setFocusable(true);
+        botaoAcao.setVisible(false);
+        botaoAcao.setToolTipText("Começar ou reiniciar a partida");
+        botaoAcao.getAccessibleContext().setAccessibleName("Começar ou reiniciar partida");
+        botaoAcao.addActionListener(event -> iniciarOuReiniciar());
+
         configurarTeclas();
-        configurarSeletorDeCor();
         setFocusable(true);
-        setToolTipText("Use as setas, W A S D, Enter ou Espa\u00e7o para jogar.");
+        setToolTipText("Use as setas, W A S D, P ou Espa\u00e7o para jogar.");
+        getAccessibleContext().setAccessibleDescription(
+                "Jogo da cobrinha. Use setas ou W A S D para mover.");
         inicioEntradaNs = System.nanoTime();
         ultimoQuadroNs = inicioEntradaNs;
         temporizador.start();
     }
 
-    private void configurarSeletorDeCor() {
-        addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent event) {
-                if (BOTAO_COR.contains(event.getPoint())) {
-                    escolherCor();
-                }
-                if (botaoIniciar != null && botaoIniciar.contains(event.getPoint())) {
-                    iniciarOuReiniciar();
-                }
-            }
+    private JButton criarBotaoCor() {
+        JButton botao = new JButton();
+        botao.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        botao.addActionListener(event -> escolherCor());
+        return botao;
+    }
 
-            @Override
-            public void mouseExited(MouseEvent event) {
-                sobreBotaoCor = false;
-                sobreBotaoIniciar = false;
-                setCursor(java.awt.Cursor.getDefaultCursor());
-                repaint();
-            }
-        });
-        addMouseMotionListener(new MouseMotionAdapter() {
-            @Override
-            public void mouseMoved(MouseEvent event) {
-                sobreBotaoCor = BOTAO_COR.contains(event.getPoint());
-                sobreBotaoIniciar = botaoIniciar != null
-                        && botaoIniciar.contains(event.getPoint());
-                setCursor(java.awt.Cursor.getPredefinedCursor(
-                        sobreBotaoCor || sobreBotaoIniciar
-                                ? java.awt.Cursor.HAND_CURSOR
-                                : java.awt.Cursor.DEFAULT_CURSOR));
-                repaint();
-            }
-        });
+    private JButton criarBotaoAcao() {
+        JButton botao = new JButton();
+        botao.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        return botao;
     }
 
     private void escolherCor() {
@@ -149,6 +149,8 @@ public class PainelJogo extends JPanel {
         associarTecla(KeyEvent.VK_D, "direitaD", () -> mudarDirecao(Cobrinha.Direcao.DIREITA));
         associarTecla(KeyEvent.VK_SPACE, "iniciar", this::iniciarOuReiniciar);
         associarTecla(KeyEvent.VK_ENTER, "iniciarEnter", this::iniciarOuReiniciar);
+        associarTecla(KeyEvent.VK_P, "pausar", this::pausarOuRetomar);
+        associarTecla(KeyEvent.VK_ESCAPE, "pausarEscape", this::pausarOuRetomar);
     }
 
     private void associarTecla(int tecla, String nome, Runnable acao) {
@@ -168,6 +170,20 @@ public class PainelJogo extends JPanel {
     private void mudarDirecao(Cobrinha.Direcao direcao) {
         if (estado == Estado.JOGANDO && cobrinha != null) {
             cobrinha.mudarDirecao(direcao);
+        }
+    }
+
+    private void pausarOuRetomar() {
+        if (estado == Estado.JOGANDO) {
+            estado = Estado.PAUSADO;
+            temporizador.stop();
+            repaint();
+        } else if (estado == Estado.PAUSADO) {
+            estado = Estado.JOGANDO;
+            ultimoQuadroNs = System.nanoTime();
+            tempoAcumuladoNs = 0;
+            temporizador.start();
+            repaint();
         }
     }
 
@@ -219,6 +235,7 @@ public class PainelJogo extends JPanel {
         if (cobrinha.getX() == comida.getX() && cobrinha.getY() == comida.getY()) {
             cobrinha.crescer();
             pontuacao += 10;
+            inicioFeedbackPontuacaoNs = System.nanoTime();
             posicionarComida();
         }
     }
@@ -290,6 +307,7 @@ public class PainelJogo extends JPanel {
         g2.setFont(new Font("SansSerif", Font.PLAIN, 11));
         g2.drawString("SETAS / WASD PARA MOVER", 62, 46);
 
+        boolean sobreBotaoCor = botaoCor.getModel().isRollover();
         g2.setColor(sobreBotaoCor ? new Color(48, 70, 94) : new Color(29, 43, 63));
         g2.fillRoundRect(BOTAO_COR.x, BOTAO_COR.y, BOTAO_COR.width, BOTAO_COR.height, 12, 12);
         g2.setColor(sobreBotaoCor ? new Color(96, 122, 150) : new Color(48, 66, 91));
@@ -311,9 +329,20 @@ public class PainelJogo extends JPanel {
         g2.setColor(TEXTO_SECUNDARIO);
         g2.setFont(new Font("SansSerif", Font.BOLD, 9));
         g2.drawString("PONTUA\u00c7\u00c3O", xCartao + 12, 25);
-        g2.setColor(DESTAQUE);
-        g2.setFont(new Font("SansSerif", Font.BOLD, 17));
-        g2.drawString(String.format("%03d", pontuacao), xCartao + 12, 46);
+        long tempoFeedback = inicioFeedbackPontuacaoNs == 0
+                ? DURACAO_FEEDBACK_NS
+                : System.nanoTime() - inicioFeedbackPontuacaoNs;
+        if (tempoFeedback < DURACAO_FEEDBACK_NS) {
+            float progresso = (float) tempoFeedback / DURACAO_FEEDBACK_NS;
+            float escala = 1.0f + (1.0f - progresso) * 0.22f;
+            g2.setFont(new Font("SansSerif", Font.BOLD, Math.round(17 * escala)));
+            g2.setColor(DESTAQUE);
+            g2.drawString(String.format("%03d", pontuacao), xCartao + 12, 46);
+        } else {
+            g2.setColor(DESTAQUE);
+            g2.setFont(new Font("SansSerif", Font.BOLD, 17));
+            g2.drawString(String.format("%03d", pontuacao), xCartao + 12, 46);
+        }
         g2.setColor(estado == Estado.JOGANDO ? DESTAQUE : TEXTO_SECUNDARIO);
         g2.fillOval(xCartao + larguraCartao - 24, 20, 8, 8);
 
@@ -445,23 +474,29 @@ public class PainelJogo extends JPanel {
             titulo = "Jogo da Cobrinha";
             etiqueta = "ARCADE CL\u00c1SSICO";
             detalhe = "Pegue a comida e evite as colis\u00f5es.";
-            instrucao = "PRESSIONE ESPA\u00c7O PARA COME\u00c7AR";
+            instrucao = "CLIQUE, ESPA\u00c7O OU ENTER";
+            dica = "Use as setas ou W A S D para se mover";
+        } else if (estado == Estado.PAUSADO) {
+            titulo = "Jogo pausado";
+            etiqueta = "PARTIDA EM PAUSA";
+            detalhe = "Pontua\u00e7\u00e3o atual: " + pontuacao;
+            instrucao = "PRESSIONE P PARA CONTINUAR";
             dica = "Use as setas ou W A S D para se mover";
         } else if (venceu) {
             titulo = "Voc\u00ea venceu!";
             etiqueta = "TABULEIRO COMPLETO";
             detalhe = "Pontua\u00e7\u00e3o final: " + pontuacao;
-            instrucao = "ESPA\u00c7O PARA JOGAR NOVAMENTE";
+            instrucao = "CLIQUE, ESPA\u00c7O OU ENTER";
             dica = "Incr\u00edvel! Voc\u00ea ocupou todo o tabuleiro.";
         } else {
             titulo = "Fim de jogo";
             etiqueta = "PARTIDA ENCERRADA";
             detalhe = "Pontua\u00e7\u00e3o final: " + pontuacao;
-            instrucao = "ESPA\u00c7O PARA JOGAR NOVAMENTE";
+            instrucao = "CLIQUE, ESPA\u00c7O OU ENTER";
             dica = "Tente outra vez e supere sua pontua\u00e7\u00e3o.";
         }
 
-        desenharTextoCentralizado(g2, etiqueta, cartaoY + 39, 10, Font.BOLD, DESTAQUE);
+        desenharTextoCentralizado(g2, etiqueta, cartaoY + 39, 11, Font.BOLD, DESTAQUE);
         desenharTextoCentralizado(g2, titulo, cartaoY + 79, 27, Font.BOLD, TEXTO);
         desenharTextoCentralizado(g2, detalhe, cartaoY + 106, 14, Font.PLAIN, TEXTO_SECUNDARIO);
 
@@ -469,11 +504,15 @@ public class PainelJogo extends JPanel {
         int botaoX = (getWidth() - botaoLargura) / 2;
         int botaoY = cartaoY + 124;
         botaoIniciar = new Rectangle(botaoX, botaoY, botaoLargura, 37);
-        g2.setColor(sobreBotaoIniciar
+        botaoAcao.setBounds(botaoIniciar);
+        botaoAcao.setVisible(estado != Estado.JOGANDO && estado != Estado.PAUSADO);
+        botaoAcao.setText("");
+        boolean sobreBotaoAcao = botaoAcao.getModel().isRollover();
+        g2.setColor(sobreBotaoAcao
                 ? new Color(48, 112, 82)
                 : new Color(36, 75, 58));
         g2.fillRoundRect(botaoX, botaoY, botaoLargura, 37, 12, 12);
-        g2.setColor(sobreBotaoIniciar
+        g2.setColor(sobreBotaoAcao
                 ? new Color(108, 190, 146)
                 : new Color(74, 140, 106));
         g2.drawRoundRect(botaoX, botaoY, botaoLargura, 37, 12, 12);
@@ -492,6 +531,7 @@ public class PainelJogo extends JPanel {
     private enum Estado {
         INICIO,
         JOGANDO,
+        PAUSADO,
         FIM
     }
 }

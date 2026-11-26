@@ -18,6 +18,7 @@ java -cp out br.com.jogopoo.Main
 
 - Clique no botão de início ou pressione **espaço** / **Enter** para começar ou reiniciar.
 - Use as **setas** ou **W, A, S, D** para mover a cobrinha.
+- Pressione **P** ou **Esc** para pausar ou continuar a partida.
 - Coma a comida para crescer e aumentar a pontuação.
 - Use **TROCAR COR** no cabeçalho para escolher outra cor. A partida pausa enquanto o seletor está aberto.
 
