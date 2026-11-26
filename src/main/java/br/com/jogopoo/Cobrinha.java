@@ -2,6 +2,8 @@ package br.com.jogopoo;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.GradientPaint;
+import java.awt.BasicStroke;
 import java.awt.Point;
 import java.util.ArrayList;
 import java.util.List;
@@ -82,7 +84,6 @@ public class Cobrinha extends ElementoJogo {
     @Override
     public void desenhar(Graphics2D graficos, int tamanhoCelula, double progresso) {
         double fase = Math.max(0.0, Math.min(1.0, progresso));
-        graficos.setColor(corCorpo);
         for (int i = 0; i < corpo.size(); i++) {
             Point segmentoAtual = corpo.get(i);
             Point segmentoAnterior = i + 1 < posicoesAnteriores.size()
@@ -91,20 +92,36 @@ public class Cobrinha extends ElementoJogo {
             desenharSegmento(graficos, segmentoAnterior, segmentoAtual, tamanhoCelula, fase);
         }
 
-        graficos.setColor(corCabeca);
         Point cabecaAnterior = posicoesAnteriores.get(0);
         Point cabecaAtual = new Point(getX(), getY());
         double x = cabecaAnterior.x + (cabecaAtual.x - cabecaAnterior.x) * fase;
         double y = cabecaAnterior.y + (cabecaAtual.y - cabecaAnterior.y) * fase;
         int xPixel = (int) Math.round(x * tamanhoCelula) + 1;
         int yPixel = (int) Math.round(y * tamanhoCelula) + 1;
+        graficos.setColor(new Color(5, 10, 20, 80));
+        graficos.fillRoundRect(
+                xPixel + 2,
+                yPixel + 3,
+                tamanhoCelula - 2,
+                tamanhoCelula - 2,
+                10,
+                10);
+        GradientPaint degradedeCabeca = new GradientPaint(
+                xPixel, yPixel, corCorpo.brighter(),
+                xPixel + tamanhoCelula, yPixel + tamanhoCelula, corCabeca);
+        graficos.setPaint(degradedeCabeca);
         graficos.fillRoundRect(
                 xPixel,
                 yPixel,
                 tamanhoCelula - 2,
                 tamanhoCelula - 2,
-                8,
-                8);
+                10,
+                10);
+        graficos.setColor(new Color(255, 255, 255, 70));
+        graficos.setStroke(new BasicStroke(1.2f));
+        graficos.drawRoundRect(
+                xPixel + 2, yPixel + 2,
+                tamanhoCelula - 6, tamanhoCelula - 6, 8, 8);
         desenharOlhos(graficos, xPixel, yPixel, tamanhoCelula);
     }
 
@@ -112,13 +129,36 @@ public class Cobrinha extends ElementoJogo {
             Graphics2D graficos, Point anterior, Point atual, int tamanhoCelula, double fase) {
         double x = anterior.x + (atual.x - anterior.x) * fase;
         double y = anterior.y + (atual.y - anterior.y) * fase;
+        int xPixel = (int) Math.round(x * tamanhoCelula) + 1;
+        int yPixel = (int) Math.round(y * tamanhoCelula) + 1;
+
+        graficos.setColor(new Color(5, 10, 20, 55));
         graficos.fillRoundRect(
-                (int) Math.round(x * tamanhoCelula) + 1,
-                (int) Math.round(y * tamanhoCelula) + 1,
+                xPixel + 2,
+                yPixel + 3,
                 tamanhoCelula - 2,
                 tamanhoCelula - 2,
                 8,
                 8);
+        GradientPaint degradedeCorpo = new GradientPaint(
+                xPixel, yPixel, corCorpo.brighter(),
+                xPixel + tamanhoCelula, yPixel + tamanhoCelula, corCorpo);
+        graficos.setPaint(degradedeCorpo);
+        graficos.fillRoundRect(
+                xPixel,
+                yPixel,
+                tamanhoCelula - 2,
+                tamanhoCelula - 2,
+                8,
+                8);
+        graficos.setColor(new Color(255, 255, 255, 45));
+        graficos.fillRoundRect(
+                xPixel + 4,
+                yPixel + 3,
+                tamanhoCelula - 9,
+                3,
+                3,
+                3);
     }
 
     private void desenharOlhos(Graphics2D graficos, int x, int y, int tamanhoCelula) {

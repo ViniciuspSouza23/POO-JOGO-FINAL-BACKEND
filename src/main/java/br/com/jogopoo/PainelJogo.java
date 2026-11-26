@@ -6,16 +6,18 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
+import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.BasicStroke;
 import java.awt.Rectangle;
+import java.awt.geom.Rectangle2D;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
-import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -36,6 +38,7 @@ public class PainelJogo extends JPanel {
     private static final int ALTURA_CABECALHO = 64;
     private static final int INTERVALO_RENDERIZACAO_MS = 16;
     private static final long PASSO_MOVIMENTO_NS = 120_000_000L;
+    private static final long DURACAO_ENTRADA_NS = 650_000_000L;
     private static final Rectangle BOTAO_COR = new Rectangle(264, 14, 166, 36);
     private static final Color FUNDO = new Color(11, 18, 32);
     private static final Color CABECALHO = new Color(15, 23, 42);
@@ -58,8 +61,11 @@ public class PainelJogo extends JPanel {
     private boolean venceu;
     private Color corSelecionada = Cobrinha.COR_PADRAO;
     private boolean sobreBotaoCor;
+    private boolean sobreBotaoIniciar;
+    private Rectangle botaoIniciar;
     private long ultimoQuadroNs;
     private long tempoAcumuladoNs;
+    private long inicioEntradaNs;
 
     public PainelJogo() {
         setLayout(new BorderLayout());
@@ -69,6 +75,11 @@ public class PainelJogo extends JPanel {
                 LINHAS * TAMANHO_CELULA + ALTURA_CABECALHO));
         configurarTeclas();
         configurarSeletorDeCor();
+        setFocusable(true);
+        setToolTipText("Use as setas, W A S D, Enter ou Espa\u00e7o para jogar.");
+        inicioEntradaNs = System.nanoTime();
+        ultimoQuadroNs = inicioEntradaNs;
+        temporizador.start();
     }
 
     private void configurarSeletorDeCor() {
@@ -78,11 +89,15 @@ public class PainelJogo extends JPanel {
                 if (BOTAO_COR.contains(event.getPoint())) {
                     escolherCor();
                 }
+                if (botaoIniciar != null && botaoIniciar.contains(event.getPoint())) {
+                    iniciarOuReiniciar();
+                }
             }
 
             @Override
             public void mouseExited(MouseEvent event) {
                 sobreBotaoCor = false;
+                sobreBotaoIniciar = false;
                 setCursor(java.awt.Cursor.getDefaultCursor());
                 repaint();
             }
@@ -91,8 +106,12 @@ public class PainelJogo extends JPanel {
             @Override
             public void mouseMoved(MouseEvent event) {
                 sobreBotaoCor = BOTAO_COR.contains(event.getPoint());
+                sobreBotaoIniciar = botaoIniciar != null
+                        && botaoIniciar.contains(event.getPoint());
                 setCursor(java.awt.Cursor.getPredefinedCursor(
-                        sobreBotaoCor ? java.awt.Cursor.HAND_CURSOR : java.awt.Cursor.DEFAULT_CURSOR));
+                        sobreBotaoCor || sobreBotaoIniciar
+                                ? java.awt.Cursor.HAND_CURSOR
+                                : java.awt.Cursor.DEFAULT_CURSOR));
                 repaint();
             }
         });
@@ -129,6 +148,7 @@ public class PainelJogo extends JPanel {
         associarTecla(KeyEvent.VK_RIGHT, "direita", () -> mudarDirecao(Cobrinha.Direcao.DIREITA));
         associarTecla(KeyEvent.VK_D, "direitaD", () -> mudarDirecao(Cobrinha.Direcao.DIREITA));
         associarTecla(KeyEvent.VK_SPACE, "iniciar", this::iniciarOuReiniciar);
+        associarTecla(KeyEvent.VK_ENTER, "iniciarEnter", this::iniciarOuReiniciar);
     }
 
     private void associarTecla(int tecla, String nome, Runnable acao) {
@@ -178,6 +198,11 @@ public class PainelJogo extends JPanel {
             moverUmaCelula();
         }
         repaint();
+
+        if (estado == Estado.INICIO
+                && agora - inicioEntradaNs >= DURACAO_ENTRADA_NS) {
+            temporizador.stop();
+        }
     }
 
     private void moverUmaCelula() {
@@ -236,11 +261,22 @@ public class PainelJogo extends JPanel {
     }
 
     private void desenharTabuleiro(Graphics2D g2) {
-        g2.setColor(FUNDO);
+        GradientPaint fundo = new GradientPaint(
+                0, 0, new Color(13, 21, 38),
+                0, getHeight(), new Color(7, 12, 24));
+        g2.setPaint(fundo);
         g2.fillRect(0, 0, getWidth(), getHeight());
 
-        g2.setColor(CABECALHO);
+        GradientPaint cabecalho = new GradientPaint(
+                0, 0, new Color(20, 31, 52),
+                getWidth(), 0, new Color(12, 20, 36));
+        g2.setPaint(cabecalho);
         g2.fillRect(0, 0, getWidth(), ALTURA_CABECALHO);
+        g2.setColor(new Color(48, 65, 88));
+        g2.drawLine(0, ALTURA_CABECALHO - 1, getWidth(), ALTURA_CABECALHO - 1);
+
+        g2.setColor(new Color(74, 222, 128, 24));
+        g2.fillOval(8, 4, 54, 54);
         g2.setColor(DESTAQUE);
         g2.fillRoundRect(18, 14, 34, 34, 11, 11);
         g2.setColor(new Color(11, 18, 32));
@@ -254,28 +290,39 @@ public class PainelJogo extends JPanel {
         g2.setFont(new Font("SansSerif", Font.PLAIN, 11));
         g2.drawString("SETAS / WASD PARA MOVER", 62, 46);
 
-        g2.setColor(sobreBotaoCor ? new Color(42, 59, 80) : new Color(29, 43, 63));
+        g2.setColor(sobreBotaoCor ? new Color(48, 70, 94) : new Color(29, 43, 63));
         g2.fillRoundRect(BOTAO_COR.x, BOTAO_COR.y, BOTAO_COR.width, BOTAO_COR.height, 12, 12);
+        g2.setColor(sobreBotaoCor ? new Color(96, 122, 150) : new Color(48, 66, 91));
+        g2.drawRoundRect(BOTAO_COR.x, BOTAO_COR.y, BOTAO_COR.width, BOTAO_COR.height, 12, 12);
         g2.setColor(corSelecionada);
         g2.fillOval(BOTAO_COR.x + 10, BOTAO_COR.y + 9, 18, 18);
+        g2.setColor(brighter(corSelecionada));
+        g2.fillOval(BOTAO_COR.x + 13, BOTAO_COR.y + 12, 5, 5);
         g2.setColor(TEXTO);
         g2.setFont(new Font("SansSerif", Font.BOLD, 10));
         g2.drawString("TROCAR COR", BOTAO_COR.x + 37, BOTAO_COR.y + 22);
 
         int larguraCartao = 138;
         int xCartao = getWidth() - larguraCartao - 16;
-        g2.setColor(new Color(29, 43, 63));
+        g2.setColor(new Color(21, 34, 54));
         g2.fillRoundRect(xCartao, 9, larguraCartao, 46, 12, 12);
+        g2.setColor(new Color(48, 66, 91));
+        g2.drawRoundRect(xCartao, 9, larguraCartao, 46, 12, 12);
         g2.setColor(TEXTO_SECUNDARIO);
         g2.setFont(new Font("SansSerif", Font.BOLD, 9));
         g2.drawString("PONTUA\u00c7\u00c3O", xCartao + 12, 25);
         g2.setColor(DESTAQUE);
         g2.setFont(new Font("SansSerif", Font.BOLD, 17));
         g2.drawString(String.format("%03d", pontuacao), xCartao + 12, 46);
+        g2.setColor(estado == Estado.JOGANDO ? DESTAQUE : TEXTO_SECUNDARIO);
+        g2.fillOval(xCartao + larguraCartao - 24, 20, 8, 8);
 
         int largura = COLUNAS * TAMANHO_CELULA;
         int altura = LINHAS * TAMANHO_CELULA;
-        g2.setColor(TABULEIRO);
+        GradientPaint tabuleiroGradiente = new GradientPaint(
+                0, ALTURA_CABECALHO, new Color(20, 33, 54),
+                0, ALTURA_CABECALHO + altura, new Color(13, 23, 40));
+        g2.setPaint(tabuleiroGradiente);
         g2.fillRect(0, ALTURA_CABECALHO, largura, altura);
 
         g2.setColor(CELULA_ALTERNADA);
@@ -287,6 +334,19 @@ public class PainelJogo extends JPanel {
                             ALTURA_CABECALHO + y * TAMANHO_CELULA + 1,
                             TAMANHO_CELULA - 1,
                             TAMANHO_CELULA - 1);
+                }
+            }
+        }
+
+        g2.setColor(new Color(255, 255, 255, 8));
+        for (int y = 0; y < LINHAS; y++) {
+            for (int x = 0; x < COLUNAS; x++) {
+                if ((x * 7 + y * 13) % 19 == 0) {
+                    g2.fillRect(
+                            x * TAMANHO_CELULA + 9,
+                            ALTURA_CABECALHO + y * TAMANHO_CELULA + 9,
+                            2,
+                            2);
                 }
             }
         }
@@ -312,6 +372,14 @@ public class PainelJogo extends JPanel {
 
         g2.setColor(new Color(46, 62, 87));
         g2.drawRect(0, ALTURA_CABECALHO, largura - 1, altura - 1);
+
+        g2.setColor(new Color(74, 222, 128, 18));
+        g2.setStroke(new BasicStroke(2f));
+        g2.drawRect(3, ALTURA_CABECALHO + 3, largura - 7, altura - 7);
+    }
+
+    private static Color brighter(Color cor) {
+        return cor.brighter().brighter();
     }
 
     private void desenharElementos(Graphics2D g2) {
@@ -347,12 +415,26 @@ public class PainelJogo extends JPanel {
         int cartaoX = (getWidth() - cartaoLargura) / 2;
         int cartaoY = ALTURA_CABECALHO + (altura - cartaoAltura) / 2;
 
+        if (estado == Estado.INICIO) {
+            long tempoEntrada = Math.max(
+                    0L,
+                    System.nanoTime() - inicioEntradaNs);
+            float progressoEntrada = (float) Math.min(
+                    1.0,
+                    (double) tempoEntrada / DURACAO_ENTRADA_NS);
+            float suavizado = progressoEntrada * progressoEntrada
+                    * (3.0f - 2.0f * progressoEntrada);
+            g2.setComposite(AlphaComposite.SrcOver.derive(
+                    0.15f + 0.85f * suavizado));
+        }
+
         g2.setColor(new Color(0, 0, 0, 100));
         g2.fillRoundRect(cartaoX, cartaoY + 7, cartaoLargura, cartaoAltura, 24, 24);
         g2.setColor(CARTAO);
         g2.fillRoundRect(cartaoX, cartaoY, cartaoLargura, cartaoAltura, 24, 24);
         g2.setColor(new Color(48, 66, 91));
         g2.drawRoundRect(cartaoX, cartaoY, cartaoLargura, cartaoAltura, 24, 24);
+        g2.setComposite(AlphaComposite.SrcOver);
 
         String titulo;
         String etiqueta;
@@ -386,8 +468,15 @@ public class PainelJogo extends JPanel {
         int botaoLargura = 322;
         int botaoX = (getWidth() - botaoLargura) / 2;
         int botaoY = cartaoY + 124;
-        g2.setColor(new Color(36, 75, 58));
+        botaoIniciar = new Rectangle(botaoX, botaoY, botaoLargura, 37);
+        g2.setColor(sobreBotaoIniciar
+                ? new Color(48, 112, 82)
+                : new Color(36, 75, 58));
         g2.fillRoundRect(botaoX, botaoY, botaoLargura, 37, 12, 12);
+        g2.setColor(sobreBotaoIniciar
+                ? new Color(108, 190, 146)
+                : new Color(74, 140, 106));
+        g2.drawRoundRect(botaoX, botaoY, botaoLargura, 37, 12, 12);
         desenharTextoCentralizado(g2, instrucao, botaoY + 24, 11, Font.BOLD, DESTAQUE);
         desenharTextoCentralizado(g2, dica, cartaoY + 186, 12, Font.PLAIN, TEXTO_SECUNDARIO);
     }
