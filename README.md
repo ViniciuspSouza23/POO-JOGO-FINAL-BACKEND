@@ -1,6 +1,6 @@
 # Jogo da Cobrinha
 
-Projeto de estudo em Java que implementa o jogo da cobrinha com interface gráfica Swing. O jogador controla a cobrinha, coleta a comida para crescer e ganhar pontos, e perde ao bater na parede ou no próprio corpo. A cor da cobrinha pode ser alterada pelo seletor no cabeçalho.
+Projeto de estudo em Java que implementa o jogo da cobrinha com interface gráfica Swing. O jogador controla a cobrinha, coleta a comida para crescer e ganhar pontos, e perde ao bater na parede ou no próprio corpo. A interface possui tema escuro, tabuleiro texturizado, elementos com profundidade e animação suave de entrada. A cor da cobrinha pode ser alterada pelo seletor no cabeçalho.
 
 ## Requisitos e execução
 
@@ -16,7 +16,7 @@ java -cp out br.com.jogopoo.Main
 
 ## Como jogar
 
-- Pressione **espaço** para começar ou reiniciar.
+- Clique no botão de início ou pressione **espaço** / **Enter** para começar ou reiniciar.
 - Use as **setas** ou **W, A, S, D** para mover a cobrinha.
 - Coma a comida para crescer e aumentar a pontuação.
 - Use **TROCAR COR** no cabeçalho para escolher outra cor. A partida pausa enquanto o seletor está aberto.
