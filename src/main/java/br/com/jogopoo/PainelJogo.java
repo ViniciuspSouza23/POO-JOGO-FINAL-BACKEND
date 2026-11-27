@@ -27,9 +27,13 @@ import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 import javax.swing.Timer;
 
+/**
+ * Coordena os estados da partida, os controles Swing e o desenho do tabuleiro.
+ */
 public class PainelJogo extends JPanel {
     private static final long serialVersionUID = 1L;
 
+    // Geometria fixa do tabuleiro e intervalos de animação/movimento.
     private static final int TAMANHO_CELULA = 20;
     private static final int COLUNAS = 30;
     private static final int LINHAS = 30;
@@ -39,6 +43,8 @@ public class PainelJogo extends JPanel {
     private static final long DURACAO_ENTRADA_NS = 650_000_000L;
     private static final long DURACAO_FEEDBACK_NS = 450_000_000L;
     private static final Rectangle BOTAO_COR = new Rectangle(264, 14, 166, 36);
+
+    // Paleta compartilhada pelo fundo, tabuleiro, cartões e textos.
     private static final Color FUNDO = new Color(11, 18, 32);
     private static final Color CABECALHO = new Color(15, 23, 42);
     private static final Color TABULEIRO = new Color(17, 27, 46);
@@ -50,11 +56,14 @@ public class PainelJogo extends JPanel {
     private static final Color DESTAQUE = new Color(74, 222, 128);
     private static final Color CARTAO = new Color(20, 31, 51);
 
+    // O timer dirige a atualização na EDT; o movimento usa um intervalo próprio.
     private final Timer temporizador = new Timer(INTERVALO_RENDERIZACAO_MS, event -> atualizarJogo());
+    // A referência ao tipo base permite desenhar subclasses por despacho polimórfico.
     private final List<ElementoJogo> elementos = new ArrayList<>();
     private final JButton botaoCor = criarBotaoCor();
     private final JButton botaoAcao = criarBotaoAcao();
 
+    // Estado e dados da partida atual.
     private Cobrinha cobrinha;
     private Comida comida;
     private Estado estado = Estado.INICIO;
@@ -62,12 +71,15 @@ public class PainelJogo extends JPanel {
     private boolean venceu;
     private Color corSelecionada = Cobrinha.COR_PADRAO;
     private Rectangle botaoIniciar;
+
+    // Referências temporais para movimento interpolado e feedback visual.
     private long ultimoQuadroNs;
     private long tempoAcumuladoNs;
     private long inicioEntradaNs;
     private long inicioFeedbackPontuacaoNs;
 
     public PainelJogo() {
+        // Configura o tabuleiro, controles acessíveis e atualizações da tela inicial.
         setLayout(new BorderLayout());
         setBackground(FUNDO);
         setPreferredSize(new Dimension(
@@ -118,23 +130,20 @@ public class PainelJogo extends JPanel {
     }
 
     private void escolherCor() {
+        // Preserva o estado da partida enquanto o seletor modal de cor está aberto.
         boolean estavaJogando = estado == Estado.JOGANDO;
-        // Pausa a partida enquanto o diálogo de seleção de cor estiver aberto.
         if (estavaJogando) {
             temporizador.stop();
         }
 
         Color novaCor = JColorChooser.showDialog(this, "Escolha a cor da cobrinha", corSelecionada);
-        // Aplica apenas uma escolha confirmada pelo jogador.
         if (novaCor != null) {
             corSelecionada = novaCor;
-            // Atualiza também a cobrinha existente, se a partida já tiver começado.
             if (cobrinha != null) {
                 cobrinha.definirCor(novaCor);
             }
         }
 
-        // Retoma o temporizador somente se a partida estava ativa antes do diálogo.
         if (estavaJogando) {
             ultimoQuadroNs = System.nanoTime();
             temporizador.start();
@@ -143,6 +152,7 @@ public class PainelJogo extends JPanel {
     }
 
     private void configurarTeclas() {
+        // Associa setas/WASD ao movimento e atalhos dedicados a iniciar e pausar.
         associarTecla(KeyEvent.VK_UP, "cima", () -> mudarDirecao(Cobrinha.Direcao.CIMA));
         associarTecla(KeyEvent.VK_W, "cimaW", () -> mudarDirecao(Cobrinha.Direcao.CIMA));
         associarTecla(KeyEvent.VK_DOWN, "baixo", () -> mudarDirecao(Cobrinha.Direcao.BAIXO));
@@ -158,6 +168,7 @@ public class PainelJogo extends JPanel {
     }
 
     private void associarTecla(int tecla, String nome, Runnable acao) {
+        // Usa key bindings para manter os atalhos ativos mesmo com foco nos botões.
         InputMap entrada = getInputMap(WHEN_IN_FOCUSED_WINDOW);
         ActionMap acoes = getActionMap();
         entrada.put(KeyStroke.getKeyStroke(tecla, 0), nome);
@@ -179,13 +190,12 @@ public class PainelJogo extends JPanel {
     }
 
     private void pausarOuRetomar() {
-        // Interrompe a atualização e mostra o estado de pausa.
+        // Alterna entre jogo e pausa sem alterar a posição ou a pontuação.
         if (estado == Estado.JOGANDO) {
             estado = Estado.PAUSADO;
             temporizador.stop();
             repaint();
         } else if (estado == Estado.PAUSADO) {
-            // Retoma sem acumular o tempo passado durante a pausa.
             estado = Estado.JOGANDO;
             ultimoQuadroNs = System.nanoTime();
             tempoAcumuladoNs = 0;
@@ -195,7 +205,7 @@ public class PainelJogo extends JPanel {
     }
 
     private void iniciarOuReiniciar() {
-        // Uma nova partida só pode começar na tela inicial ou após o fim da anterior.
+        // Reinicializa os dados somente ao iniciar uma nova partida ou após o fim.
         if (estado == Estado.INICIO || estado == Estado.FIM) {
             cobrinha = new Cobrinha(COLUNAS / 2, LINHAS / 2);
             cobrinha.definirCor(corSelecionada);
@@ -217,14 +227,14 @@ public class PainelJogo extends JPanel {
         ultimoQuadroNs = agora;
         tempoAcumuladoNs += Math.min(decorrido, PASSO_MOVIMENTO_NS);
 
-        // Executa movimentos quando o tempo acumulado alcança o intervalo definido.
+        // Converte o tempo acumulado em passos discretos de movimento.
         while (tempoAcumuladoNs >= PASSO_MOVIMENTO_NS && estado == Estado.JOGANDO) {
             tempoAcumuladoNs -= PASSO_MOVIMENTO_NS;
             moverUmaCelula();
         }
         repaint();
 
-        // Encerra o timer depois que a animação de entrada termina na tela inicial.
+        // Para as atualizações periódicas quando a animação inicial já terminou.
         if (estado == Estado.INICIO
                 && agora - inicioEntradaNs >= DURACAO_ENTRADA_NS) {
             temporizador.stop();
@@ -234,7 +244,7 @@ public class PainelJogo extends JPanel {
     private void moverUmaCelula() {
         cobrinha.mover();
 
-        // Finaliza a partida ao sair dos limites ou tocar o próprio corpo.
+        // Aplica primeiro as condições de derrota antes de verificar a comida.
         if (cobrinha.getX() < 0 || cobrinha.getX() >= COLUNAS
                 || cobrinha.getY() < 0 || cobrinha.getY() >= LINHAS
                 || cobrinha.colidiuComProprioCorpo()) {
@@ -243,7 +253,7 @@ public class PainelJogo extends JPanel {
             return;
         }
 
-        // Cresce e pontua quando a cabeça alcança a comida.
+        // Comer aumenta a cobrinha e a pontuação, e reposiciona a comida.
         if (cobrinha.getX() == comida.getX() && cobrinha.getY() == comida.getY()) {
             cobrinha.crescer();
             pontuacao += 10;
@@ -254,18 +264,16 @@ public class PainelJogo extends JPanel {
 
     private void posicionarComida() {
         List<java.awt.Point> celulasLivres = new ArrayList<>();
-        // Reúne as células que não estão ocupadas pela cobrinha.
+        // Busca as posições disponíveis para evitar que a comida apareça sob a cobrinha.
         for (int y = 0; y < LINHAS; y++) {
-            // Percorre as colunas de cada linha do tabuleiro.
             for (int x = 0; x < COLUNAS; x++) {
-                // Adiciona somente células livres para a comida.
                 if (!cobrinha.ocupa(x, y)) {
                     celulasLivres.add(new java.awt.Point(x, y));
                 }
             }
         }
 
-        // Se não houver espaço livre, a cobrinha ocupou o tabuleiro inteiro.
+        // A ausência de células livres significa que a partida foi vencida.
         if (celulasLivres.isEmpty()) {
             venceu = true;
             estado = Estado.FIM;
@@ -284,9 +292,9 @@ public class PainelJogo extends JPanel {
         Graphics2D g2 = (Graphics2D) graficos.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
+        // Mantém a pintura dividida entre cenário, elementos e sobreposição de estado.
         desenharTabuleiro(g2);
         desenharElementos(g2);
-        // Exibe o cartão de estado fora da partida ativa.
         if (estado != Estado.JOGANDO) {
             desenharMensagem(g2);
         }
@@ -295,6 +303,7 @@ public class PainelJogo extends JPanel {
     }
 
     private void desenharTabuleiro(Graphics2D g2) {
+        // Renderiza a moldura, cabeçalho, pontuação e grade em camadas.
         GradientPaint fundo = new GradientPaint(
                 0, 0, new Color(13, 21, 38),
                 0, getHeight(), new Color(7, 12, 24));
@@ -349,7 +358,7 @@ public class PainelJogo extends JPanel {
         long tempoFeedback = inicioFeedbackPontuacaoNs == 0
                 ? DURACAO_FEEDBACK_NS
                 : System.nanoTime() - inicioFeedbackPontuacaoNs;
-        // Aumenta brevemente o tamanho do número após ganhar pontos.
+        // Dá destaque temporário à pontuação recém-atualizada.
         if (tempoFeedback < DURACAO_FEEDBACK_NS) {
             float progresso = (float) tempoFeedback / DURACAO_FEEDBACK_NS;
             float escala = 1.0f + (1.0f - progresso) * 0.22f;
@@ -357,7 +366,6 @@ public class PainelJogo extends JPanel {
             g2.setColor(DESTAQUE);
             g2.drawString(String.format("%03d", pontuacao), xCartao + 12, 46);
         } else {
-            // Mantém a pontuação no tamanho normal após o feedback.
             g2.setColor(DESTAQUE);
             g2.setFont(new Font("SansSerif", Font.BOLD, 17));
             g2.drawString(String.format("%03d", pontuacao), xCartao + 12, 46);
@@ -374,11 +382,9 @@ public class PainelJogo extends JPanel {
         g2.fillRect(0, ALTURA_CABECALHO, largura, altura);
 
         g2.setColor(CELULA_ALTERNADA);
-        // Desenha o padrão alternado das células do tabuleiro.
+        // Separa visualmente as células sem competir com os elementos do jogo.
         for (int y = 0; y < LINHAS; y++) {
-            // Percorre as células de cada linha.
             for (int x = 0; x < COLUNAS; x++) {
-                // Alterna a cor de fundo para facilitar a leitura da grade.
                 if ((x + y) % 2 == 0) {
                     g2.fillRect(
                             x * TAMANHO_CELULA + 1,
@@ -390,11 +396,9 @@ public class PainelJogo extends JPanel {
         }
 
         g2.setColor(new Color(255, 255, 255, 8));
-        // Distribui pontos discretos para dar textura ao tabuleiro.
+        // Aplica uma textura discreta e determinística ao tabuleiro.
         for (int y = 0; y < LINHAS; y++) {
-            // Examina cada célula para escolher posições da textura.
             for (int x = 0; x < COLUNAS; x++) {
-                // Usa um padrão determinístico, evitando gerar ruído a cada quadro.
                 if ((x * 7 + y * 13) % 19 == 0) {
                     g2.fillRect(
                             x * TAMANHO_CELULA + 9,
@@ -405,9 +409,8 @@ public class PainelJogo extends JPanel {
             }
         }
 
-        // Desenha linhas verticais, destacando cada quinto intervalo.
+        // Desenha a grade com linhas principais a cada cinco células.
         for (int x = 0; x <= COLUNAS; x++) {
-            // Realça as divisões principais da grade.
             if (x % 5 == 0) {
                 g2.setColor(GRADE_PRINCIPAL);
             } else {
@@ -416,9 +419,7 @@ public class PainelJogo extends JPanel {
             int posicaoX = x * TAMANHO_CELULA;
             g2.drawLine(posicaoX, ALTURA_CABECALHO, posicaoX, ALTURA_CABECALHO + altura);
         }
-        // Desenha linhas horizontais com o mesmo destaque periódico.
         for (int y = 0; y <= LINHAS; y++) {
-            // Realça as divisões principais da grade.
             if (y % 5 == 0) {
                 g2.setColor(GRADE_PRINCIPAL);
             } else {
@@ -441,7 +442,6 @@ public class PainelJogo extends JPanel {
     }
 
     private void desenharElementos(Graphics2D g2) {
-        // Não há elementos para desenhar antes do início da primeira partida.
         if (cobrinha == null) {
             return;
         }
@@ -455,7 +455,7 @@ public class PainelJogo extends JPanel {
         double progresso = estado == Estado.JOGANDO
                 ? (double) tempoAcumuladoNs / PASSO_MOVIMENTO_NS
                 : 1.0;
-        // Delega o desenho a cada elemento do jogo.
+        // Usa polimorfismo para desenhar a cobrinha e a comida no espaço do tabuleiro.
         for (ElementoJogo elemento : elementos) {
             elemento.desenhar(tabuleiro, TAMANHO_CELULA, progresso);
         }
@@ -463,6 +463,7 @@ public class PainelJogo extends JPanel {
     }
 
     private void desenharMensagem(Graphics2D g2) {
+        // Sobrepõe o tabuleiro com um cartão de início, pausa, vitória ou derrota.
         int largura = COLUNAS * TAMANHO_CELULA;
         int altura = LINHAS * TAMANHO_CELULA;
         g2.setComposite(AlphaComposite.SrcOver.derive(0.68f));
@@ -475,7 +476,7 @@ public class PainelJogo extends JPanel {
         int cartaoX = (getWidth() - cartaoLargura) / 2;
         int cartaoY = ALTURA_CABECALHO + (altura - cartaoAltura) / 2;
 
-        // Anima a opacidade do cartão somente durante a entrada inicial.
+        // Suaviza a entrada do cartão sem animar os outros estados.
         if (estado == Estado.INICIO) {
             long tempoEntrada = Math.max(
                     0L,
@@ -502,7 +503,7 @@ public class PainelJogo extends JPanel {
         String detalhe;
         String instrucao;
         String dica;
-        // Prepara textos e instruções conforme o estado atual da partida.
+        // Seleciona o conteúdo do cartão a partir do estado atual da partida.
         if (estado == Estado.INICIO) {
             titulo = "Jogo da Cobrinha";
             etiqueta = "ARCADE CL\u00c1SSICO";
@@ -510,21 +511,18 @@ public class PainelJogo extends JPanel {
             instrucao = "CLIQUE, ESPA\u00c7O OU ENTER";
             dica = "Use as setas ou W A S D para se mover";
         } else if (estado == Estado.PAUSADO) {
-            // Explica como retomar e mostra a pontuação atual durante a pausa.
             titulo = "Jogo pausado";
             etiqueta = "PARTIDA EM PAUSA";
             detalhe = "Pontua\u00e7\u00e3o atual: " + pontuacao;
             instrucao = "PRESSIONE P PARA CONTINUAR";
             dica = "Use as setas ou W A S D para se mover";
         } else if (venceu) {
-            // Apresenta uma mensagem específica quando o jogador ocupa o tabuleiro.
             titulo = "Voc\u00ea venceu!";
             etiqueta = "TABULEIRO COMPLETO";
             detalhe = "Pontua\u00e7\u00e3o final: " + pontuacao;
             instrucao = "CLIQUE, ESPA\u00c7O OU ENTER";
             dica = "Incr\u00edvel! Voc\u00ea ocupou todo o tabuleiro.";
         } else {
-            // Usa a mensagem de derrota para as demais partidas encerradas.
             titulo = "Fim de jogo";
             etiqueta = "PARTIDA ENCERRADA";
             detalhe = "Pontua\u00e7\u00e3o final: " + pontuacao;
@@ -564,6 +562,7 @@ public class PainelJogo extends JPanel {
         g2.drawString(texto, (getWidth() - metricas.stringWidth(texto)) / 2, y);
     }
 
+    /** Estados que determinam os controles e a apresentação da partida. */
     private enum Estado {
         INICIO,
         JOGANDO,

@@ -9,14 +9,23 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Implementa a cobrinha como especialização de {@link ElementoJogo}.
+ *
+ * <p>Herda a posição comum, encapsula corpo e direção e sobrescreve o desenho
+ * para fornecer sua representação específica no tabuleiro.</p>
+ */
 public class Cobrinha extends ElementoJogo {
     public static final Color COR_PADRAO = new Color(74, 222, 128);
 
+    // Estado interno encapsulado; os segmentos seguem da cabeça em direção à cauda.
     private final List<Point> corpo = new ArrayList<>();
+    // Cópia do quadro anterior usada para interpolar o movimento na renderização.
     private List<Point> posicoesAnteriores = new ArrayList<>();
     private Color corCorpo = COR_PADRAO;
     private Color corCabeca = new Color(34, 197, 94);
     private Direcao direcao = Direcao.DIREITA;
+    // Sinaliza que o próximo movimento deve preservar o último segmento.
     private boolean crescer;
 
     public Cobrinha(int x, int y) {
@@ -27,16 +36,16 @@ public class Cobrinha extends ElementoJogo {
     }
 
     public void mudarDirecao(Direcao novaDirecao) {
-        // Bloqueia a inversão direta para impedir que a cobrinha colida consigo mesma.
+        // Impede uma inversão imediata de sentido.
         if (novaDirecao != direcao.oposta()) {
             direcao = novaDirecao;
         }
     }
 
     public void mover() {
+        // Guarda o quadro atual para animação, avança o corpo e move a cabeça uma célula.
         posicoesAnteriores = capturarPosicoes();
         corpo.add(0, new Point(getX(), getY()));
-        // Mantém a cauda quando há crescimento; nos demais movimentos, remove seu último segmento.
         if (crescer) {
             crescer = false;
         } else {
@@ -55,6 +64,7 @@ public class Cobrinha extends ElementoJogo {
 
     public void definirCor(Color cor) {
         corCorpo = Objects.requireNonNull(cor, "A cor da cobrinha não pode ser nula.");
+        // Deriva uma tonalidade próxima para destacar visualmente a cabeça.
         float[] hsb = Color.RGBtoHSB(cor.getRed(), cor.getGreen(), cor.getBlue(), null);
         float brilhoCabeca = hsb[2] > 0.65f
                 ? Math.max(0.35f, hsb[2] * 0.75f)
@@ -63,13 +73,10 @@ public class Cobrinha extends ElementoJogo {
     }
 
     public boolean ocupa(int x, int y) {
-        // Verifica primeiro a cabeça antes de procurar a posição no restante do corpo.
         if (getX() == x && getY() == y) {
             return true;
         }
-        // Procura a coordenada entre todos os segmentos do corpo.
         for (Point segmento : corpo) {
-            // Retorna assim que encontra um segmento na posição consultada.
             if (segmento.x == x && segmento.y == y) {
                 return true;
             }
@@ -78,9 +85,7 @@ public class Cobrinha extends ElementoJogo {
     }
 
     public boolean colidiuComProprioCorpo() {
-        // Compara cada segmento com a posição atual da cabeça.
         for (Point segmento : corpo) {
-            // Uma coincidência indica colisão com o próprio corpo.
             if (segmento.x == getX() && segmento.y == getY()) {
                 return true;
             }
@@ -91,7 +96,7 @@ public class Cobrinha extends ElementoJogo {
     @Override
     public void desenhar(Graphics2D graficos, int tamanhoCelula, double progresso) {
         double fase = Math.max(0.0, Math.min(1.0, progresso));
-        // Interpola os segmentos do corpo entre as posições dos quadros.
+        // Desenha o corpo interpolado e, em seguida, a cabeça com seus detalhes visuais.
         for (int i = 0; i < corpo.size(); i++) {
             Point segmentoAtual = corpo.get(i);
             Point segmentoAnterior = i + 1 < posicoesAnteriores.size()
@@ -177,37 +182,32 @@ public class Cobrinha extends ElementoJogo {
         int olhoX2;
         int olhoY2;
 
-        // Posiciona os olhos de acordo com a direção atual da cabeça.
+        // Ajusta a posição dos olhos para acompanhar a orientação da cabeça.
         switch (direcao) {
-            // Olhos voltados para cima.
             case CIMA:
                 olhoX1 = x + margem;
                 olhoY1 = y + margem;
                 olhoX2 = x + tamanhoCelula - margem - tamanhoOlho;
                 olhoY2 = olhoY1;
                 break;
-            // Olhos voltados para baixo.
             case BAIXO:
                 olhoX1 = x + margem;
                 olhoY1 = y + tamanhoCelula - margem - tamanhoOlho;
                 olhoX2 = x + tamanhoCelula - margem - tamanhoOlho;
                 olhoY2 = olhoY1;
                 break;
-            // Olhos voltados para a esquerda.
             case ESQUERDA:
                 olhoX1 = x + margem;
                 olhoY1 = y + margem;
                 olhoX2 = olhoX1;
                 olhoY2 = y + tamanhoCelula - margem - tamanhoOlho;
                 break;
-            // Olhos voltados para a direita.
             case DIREITA:
                 olhoX1 = x + tamanhoCelula - margem - tamanhoOlho;
                 olhoY1 = y + margem;
                 olhoX2 = olhoX1;
                 olhoY2 = y + tamanhoCelula - margem - tamanhoOlho;
                 break;
-            // Protege contra qualquer valor de direção não tratado.
             default:
                 throw new IllegalStateException("Direção desconhecida.");
         }
@@ -233,13 +233,14 @@ public class Cobrinha extends ElementoJogo {
     private List<Point> capturarPosicoes() {
         List<Point> posicoes = new ArrayList<>(corpo.size() + 1);
         posicoes.add(new Point(getX(), getY()));
-        // Copia a posição de cada segmento para a interpolação visual do próximo quadro.
+        // Inclui cabeça e segmentos para manter um snapshot independente do estado atual.
         for (Point segmento : corpo) {
             posicoes.add(new Point(segmento));
         }
         return posicoes;
     }
 
+    /** Direções válidas de movimento e seus deslocamentos no tabuleiro. */
     public enum Direcao {
         CIMA(0, -1),
         BAIXO(0, 1),
@@ -263,21 +264,16 @@ public class Cobrinha extends ElementoJogo {
         }
 
         private Direcao oposta() {
-            // Retorna a direção contrária para validar mudanças de sentido.
+            // Mapeia cada direção para sua oposta, usada para validar curvas.
             switch (this) {
-                // A direção oposta de cima é baixo.
                 case CIMA:
                     return BAIXO;
-                // A direção oposta de baixo é cima.
                 case BAIXO:
                     return CIMA;
-                // A direção oposta da esquerda é direita.
                 case ESQUERDA:
                     return DIREITA;
-                // A direção oposta da direita é esquerda.
                 case DIREITA:
                     return ESQUERDA;
-                // Protege contra qualquer direção não mapeada.
                 default:
                     throw new IllegalStateException("Direção desconhecida.");
             }

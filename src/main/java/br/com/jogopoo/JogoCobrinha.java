@@ -7,6 +7,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import javax.swing.JFrame;
 
+/** Janela principal que hospeda o painel do jogo. */
 public class JogoCobrinha extends JFrame {
     private static final long serialVersionUID = 1L;
 
@@ -21,6 +22,7 @@ public class JogoCobrinha extends JFrame {
     }
 
     private BufferedImage criarIcone() {
+        // Desenha um ícone independente de arquivos externos.
         BufferedImage icone = new BufferedImage(
                 64, 64, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g2 = icone.createGraphics();

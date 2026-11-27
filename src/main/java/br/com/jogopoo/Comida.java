@@ -5,6 +5,11 @@ import java.awt.Graphics2D;
 import java.awt.GradientPaint;
 import java.awt.BasicStroke;
 
+/**
+ * Especializa {@link ElementoJogo} para representar a comida coletável.
+ *
+ * <p>Herda e encapsula sua posição na classe base e implementa seu próprio desenho.</p>
+ */
 public class Comida extends ElementoJogo {
     private static final Color COR = new Color(248, 113, 113);
 
@@ -18,6 +23,7 @@ public class Comida extends ElementoJogo {
 
     @Override
     public void desenhar(Graphics2D graficos, int tamanhoCelula, double progresso) {
+        // Compõe a fruta com brilho, sombra, gradiente e folha dentro da célula.
         int margem = tamanhoCelula / 5;
         int x = getX() * tamanhoCelula + margem;
         int y = getY() * tamanhoCelula + margem;

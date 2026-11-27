@@ -2,7 +2,14 @@ package br.com.jogopoo;
 
 import java.awt.Graphics2D;
 
+/**
+ * Abstração comum dos objetos posicionados no tabuleiro.
+ *
+ * <p>Encapsula as coordenadas e define o contrato de desenho implementado
+ * polimorficamente pelas subclasses.</p>
+ */
 public abstract class ElementoJogo {
+    // A posição é alterada apenas pelas operações controladas desta hierarquia.
     private int x;
     private int y;
 
@@ -24,5 +31,6 @@ public abstract class ElementoJogo {
         this.y = y;
     }
 
+    /** Desenha o elemento, permitindo que cada subtipo forneça sua própria representação. */
     public abstract void desenhar(Graphics2D graficos, int tamanhoCelula, double progresso);
 }
