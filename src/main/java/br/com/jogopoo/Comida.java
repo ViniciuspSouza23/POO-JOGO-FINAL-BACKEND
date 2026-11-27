@@ -45,17 +45,13 @@ public class Comida extends ElementoJogo {
     @Override
     public void desenhar(Graphics2D graficos, int tamanhoCelula, double progresso) {
         // Compõe a fruta selecionada com brilho, sombra e detalhes dentro da célula.
-        int margem = tamanhoCelula / 5;
+        int margem = Math.max(2, tamanhoCelula / 6);
         int x = getX() * tamanhoCelula + margem;
         int y = getY() * tamanhoCelula + margem;
         int diametro = tamanhoCelula - margem * 2;
 
         graficos.setColor(tipo.aura);
-        graficos.fillOval(
-                x - 4,
-                y - 4,
-                diametro + 8,
-                diametro + 8);
+        graficos.fillOval(x - 3, y - 3, diametro + 6, diametro + 6);
         graficos.setColor(new Color(5, 10, 20, 75));
         graficos.fillOval(x + 2, y + 3, diametro, diametro);
 
@@ -93,10 +89,17 @@ public class Comida extends ElementoJogo {
                 banana.curveTo(x + diametro - 2, y + diametro + 1, x + diametro / 2, y + diametro - 2, x + 2, y + 1);
                 banana.closePath();
                 graficos.fill(banana);
+                graficos.setColor(new Color(124, 72, 18, 170));
+                graficos.setStroke(new BasicStroke(0.9f));
+                graficos.draw(banana);
                 break;
             case CEREJA:
                 graficos.fillOval(x + 1, y + diametro / 3, diametro / 2 + 1, diametro / 2 + 1);
                 graficos.fillOval(x + diametro / 2, y + diametro / 3, diametro / 2 + 1, diametro / 2 + 1);
+                graficos.setColor(new Color(90, 20, 32, 150));
+                graficos.setStroke(new BasicStroke(0.8f));
+                graficos.drawOval(x + 1, y + diametro / 3, diametro / 2 + 1, diametro / 2 + 1);
+                graficos.drawOval(x + diametro / 2, y + diametro / 3, diametro / 2 + 1, diametro / 2 + 1);
                 break;
             case KIWI:
                 graficos.setColor(new Color(120, 72, 38));
@@ -108,6 +111,9 @@ public class Comida extends ElementoJogo {
                 graficos.fillOval(x + diametro / 2 - 2, y + diametro / 2, 1, 1);
                 graficos.fillOval(x + diametro / 2 + 2, y + diametro / 2, 1, 1);
                 graficos.fillOval(x + diametro / 2, y + diametro - 4, 1, 1);
+                graficos.setColor(new Color(75, 45, 28, 180));
+                graficos.setStroke(new BasicStroke(1f));
+                graficos.drawOval(x + 1, y + 1, diametro - 2, diametro - 2);
                 break;
             case ESPECIAL:
                 graficos.fillPolygon(criarEstrela(x, y, diametro));
@@ -116,23 +122,46 @@ public class Comida extends ElementoJogo {
                 throw new IllegalStateException("Tipo de fruta desconhecido.");
         }
 
-        graficos.setColor(new Color(255, 255, 255, 150));
         if (tipo == TipoFruta.ESPECIAL) {
+            graficos.setColor(new Color(255, 255, 255, 190));
             graficos.fillOval(x + diametro / 2 - 1, y + diametro / 2 - 1, 2, 2);
-        } else {
+            graficos.setColor(new Color(255, 250, 220, 180));
+            graficos.setStroke(new BasicStroke(0.8f));
+            graficos.drawPolygon(criarEstrela(x + 2, y + 2, diametro - 4));
+        } else if (tipo == TipoFruta.BANANA) {
+            graficos.setColor(new Color(124, 72, 18));
+            graficos.fillOval(x + 1, y + 1, 2, 2);
+            graficos.fillOval(x + diametro - 3, y + diametro - 3, 2, 2);
+            graficos.setColor(new Color(255, 255, 220, 190));
+            graficos.setStroke(new BasicStroke(1f));
+            graficos.drawArc(x + 4, y + 3, diametro - 7, diametro - 7, 210, 115);
+        } else if (tipo == TipoFruta.CEREJA) {
+            graficos.setColor(new Color(255, 255, 255, 180));
+            graficos.fillOval(x + 3, y + diametro / 2, 2, 2);
+            graficos.fillOval(x + diametro - 5, y + diametro / 2, 2, 2);
+            graficos.setColor(new Color(74, 222, 128));
+            graficos.setStroke(new BasicStroke(1.2f));
+            graficos.drawLine(x + diametro / 3, y + diametro / 2, x + diametro / 2, y + 2);
+            graficos.drawLine(x + 2 * diametro / 3, y + diametro / 2, x + diametro / 2, y + 2);
+            graficos.fillOval(x + diametro / 2, y, 5, 3);
+        } else if (tipo != TipoFruta.KIWI) {
+            graficos.setColor(new Color(255, 255, 255, 160));
             graficos.fillOval(
                     x + diametro / 4,
                     y + diametro / 5,
                     Math.max(2, diametro / 5),
                     Math.max(2, diametro / 5));
             graficos.setColor(new Color(74, 222, 128));
-            graficos.setStroke(new BasicStroke(2f));
+            graficos.setStroke(new BasicStroke(1.8f));
             graficos.drawLine(
                     x + diametro / 2,
                     y + 2,
                     x + diametro / 2 + 3,
                     y - 2);
             graficos.fillOval(x + diametro / 2 + 2, y - 3, 5, 3);
+        } else {
+            graficos.setColor(new Color(255, 255, 220, 180));
+            graficos.fillOval(x + diametro / 2 - 1, y + diametro / 2 - 1, 2, 2);
         }
     }
 

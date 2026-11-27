@@ -17,7 +17,7 @@ Jogo arcade desenvolvido em Java com Swing. Controle a cobrinha, colete a comida
 - Oito variedades de frutas, incluindo uma fruta dourada rara, com poderes próprios.
 - Pontuação, crescimento e detecção de colisões.
 - Pausa, reinício e condição de vitória ao preencher o tabuleiro.
-- Seletor de cor para personalizar a cobrinha.
+- Seletores independentes para personalizar a cor da cobrinha e do fundo do tabuleiro.
 - Interface Swing sem dependências externas.
 
 ## Requisitos e execução
@@ -39,7 +39,8 @@ java -cp out br.com.jogopoo.Main
 | Mover | Setas ou **W, A, S, D** |
 | Começar ou reiniciar | **Espaço**, **Enter** ou botão na tela |
 | Pausar ou continuar | **P** ou **Esc** |
-| Alterar cor | Botão **Trocar cor** no cabeçalho |
+| Alterar cor da cobrinha | Botão **Cobrinha** no cabeçalho |
+| Alterar fundo | Botão **Fundo** no cabeçalho |
 
 Ao abrir o seletor de cor durante uma partida, o jogo pausa temporariamente.
 
@@ -87,6 +88,7 @@ classDiagram
         -estado Estado
         -pontuacao int
         -escudoAtivo boolean
+        -corFundoTabuleiro Color
         +PainelJogo()
     }
     class ElementoJogo {
