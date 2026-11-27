@@ -156,9 +156,66 @@ classDiagram
 
 ## Orientação a objetos
 
-- **Abstração:** `ElementoJogo` define posição e o contrato `desenhar(...)` sem determinar a representação de cada elemento.
-- **Encapsulamento:** coordenadas, corpo, direção e cores são protegidos pelas classes responsáveis. A direção é alterada por `mudarDirecao(...)`, que impede uma inversão imediata.
-- **Herança:** `Cobrinha` e `Comida` especializam `ElementoJogo` e herdam sua posição.
-- **Polimorfismo:** `PainelJogo` percorre elementos como `ElementoJogo`; cada classe fornece sua própria implementação de `desenhar(...)`.
+### Abstração
+
+`ElementoJogo` define os dados e o contrato comuns a tudo que aparece no tabuleiro, sem determinar como cada objeto é desenhado:
+
+```java
+public abstract class ElementoJogo {
+    private int x;
+    private int y;
+
+    public abstract void desenhar(
+            Graphics2D graficos, int tamanhoCelula, double progresso);
+}
+```
+
+Como a classe é abstrata, não criamos um `ElementoJogo` diretamente. `Cobrinha` e `Comida` fornecem suas próprias formas de desenho.
+
+### Encapsulamento
+
+O corpo e a direção da cobrinha são privados. Alterações passam por métodos que protegem as regras do jogo, como impedir uma inversão imediata:
+
+```java
+private final List<Point> corpo = new ArrayList<>();
+private Direcao direcao = Direcao.DIREITA;
+
+public void mudarDirecao(Direcao novaDirecao) {
+    if (novaDirecao != direcao.oposta()) {
+        direcao = novaDirecao;
+    }
+}
+```
+
+O painel solicita mudanças usando métodos como `mudarDirecao(...)` e `crescer(...)`, sem acessar diretamente os campos internos.
+
+### Herança
+
+`Cobrinha` e `Comida` estendem `ElementoJogo`, reutilizando sua posição e especializando o comportamento:
+
+```java
+public class Cobrinha extends ElementoJogo {
+    public Cobrinha(int x, int y) {
+        super(x, y);
+        corpo.add(new Point(x - 1, y));
+        corpo.add(new Point(x - 2, y));
+        posicoesAnteriores = capturarPosicoes();
+    }
+}
+```
+
+`super(x, y)` inicializa as coordenadas definidas pela classe base; o construtor da cobrinha também configura seus segmentos iniciais.
+
+### Polimorfismo
+
+O painel percorre os objetos usando o tipo comum `ElementoJogo` e chama o mesmo método para todos:
+
+```java
+for (ElementoJogo elemento : elementos) {
+    elemento.desenhar(tabuleiro, TAMANHO_CELULA, progresso);
+}
+```
+
+Java escolhe a implementação de `desenhar(...)` conforme o objeto: a cobrinha desenha seu corpo e a comida desenha sua fruta. Assim, o painel não precisa testar o tipo de cada elemento.
 
 `Main` inicia a interface na Event Dispatch Thread do Swing. `JogoCobrinha` monta a janela, enquanto `PainelJogo` coordena entrada, temporização, estado da partida, colisões e desenho da interface.
