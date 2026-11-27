@@ -25,8 +25,7 @@ public class Cobrinha extends ElementoJogo {
     private Color corCorpo = COR_PADRAO;
     private Color corCabeca = new Color(34, 197, 94);
     private Direcao direcao = Direcao.DIREITA;
-    // Sinaliza que o próximo movimento deve preservar o último segmento.
-    private boolean crescer;
+    private int crescimentoPendente;
 
     public Cobrinha(int x, int y) {
         super(x, y);
@@ -46,8 +45,8 @@ public class Cobrinha extends ElementoJogo {
         // Guarda o quadro atual para animação, avança o corpo e move a cabeça uma célula.
         posicoesAnteriores = capturarPosicoes();
         corpo.add(0, new Point(getX(), getY()));
-        if (crescer) {
-            crescer = false;
+        if (crescimentoPendente > 0) {
+            crescimentoPendente--;
         } else {
             corpo.remove(corpo.size() - 1);
         }
@@ -55,7 +54,35 @@ public class Cobrinha extends ElementoJogo {
     }
 
     public void crescer() {
-        crescer = true;
+        crescer(1);
+    }
+
+    public void crescer(int segmentos) {
+        if (segmentos < 1) {
+            throw new IllegalArgumentException("O crescimento deve ter ao menos um segmento.");
+        }
+        crescimentoPendente += segmentos;
+    }
+
+    public void encolher(int segmentos) {
+        if (segmentos < 1) {
+            throw new IllegalArgumentException("A redução deve ter ao menos um segmento.");
+        }
+        int reducao = Math.min(segmentos, Math.max(0, corpo.size() - 2));
+        for (int i = 0; i < reducao; i++) {
+            corpo.remove(corpo.size() - 1);
+        }
+        crescimentoPendente = Math.max(0, crescimentoPendente - segmentos);
+    }
+
+    public void envolverNasBordas(int largura, int altura) {
+        if (largura < 1 || altura < 1) {
+            throw new IllegalArgumentException("As dimensões do tabuleiro devem ser positivas.");
+        }
+        definirPosicao(
+                Math.floorMod(getX(), largura),
+                Math.floorMod(getY(), altura));
+        posicoesAnteriores = capturarPosicoes();
     }
 
     public Color getCor() {

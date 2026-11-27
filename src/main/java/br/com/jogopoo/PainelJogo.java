@@ -1,6 +1,7 @@
 package br.com.jogopoo;
 
 import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
@@ -9,12 +10,13 @@ import java.awt.FontMetrics;
 import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.BasicStroke;
+import java.awt.RadialGradientPaint;
 import java.awt.Rectangle;
-import java.awt.geom.Rectangle2D;
+import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -40,6 +42,9 @@ public class PainelJogo extends JPanel {
     private static final int ALTURA_CABECALHO = 64;
     private static final int INTERVALO_RENDERIZACAO_MS = 16;
     private static final long PASSO_MOVIMENTO_NS = 120_000_000L;
+    private static final long PASSO_TURBO_NS = 75_000_000L;
+    private static final long PASSO_LENTO_NS = 180_000_000L;
+    private static final long DURACAO_PODER_NS = 5_000_000_000L;
     private static final long DURACAO_ENTRADA_NS = 650_000_000L;
     private static final long DURACAO_FEEDBACK_NS = 450_000_000L;
     private static final Rectangle BOTAO_COR = new Rectangle(264, 14, 166, 36);
@@ -77,6 +82,10 @@ public class PainelJogo extends JPanel {
     private long tempoAcumuladoNs;
     private long inicioEntradaNs;
     private long inicioFeedbackPontuacaoNs;
+    private long turboRestanteNs;
+    private long lentoRestanteNs;
+    private long multiplicadorRestanteNs;
+    private boolean escudoAtivo;
 
     public PainelJogo() {
         // Configura o tabuleiro, controles acessíveis e atualizações da tela inicial.
@@ -92,6 +101,7 @@ public class PainelJogo extends JPanel {
         botaoCor.setOpaque(false);
         botaoCor.setContentAreaFilled(false);
         botaoCor.setBorderPainted(false);
+        botaoCor.setFocusPainted(false);
         botaoCor.setFocusable(true);
         botaoCor.setToolTipText("Escolher cor da cobrinha");
         botaoCor.getAccessibleContext().setAccessibleName("Trocar cor da cobrinha");
@@ -100,6 +110,7 @@ public class PainelJogo extends JPanel {
         botaoAcao.setOpaque(false);
         botaoAcao.setContentAreaFilled(false);
         botaoAcao.setBorderPainted(false);
+        botaoAcao.setFocusPainted(false);
         botaoAcao.setFocusable(true);
         botaoAcao.setVisible(false);
         botaoAcao.setToolTipText("Começar ou reiniciar a partida");
@@ -212,6 +223,10 @@ public class PainelJogo extends JPanel {
             comida = new Comida(0, 0);
             pontuacao = 0;
             venceu = false;
+            turboRestanteNs = 0;
+            lentoRestanteNs = 0;
+            multiplicadorRestanteNs = 0;
+            escudoAtivo = false;
             estado = Estado.JOGANDO;
             posicionarComida();
             tempoAcumuladoNs = 0;
@@ -225,11 +240,15 @@ public class PainelJogo extends JPanel {
         long agora = System.nanoTime();
         long decorrido = Math.max(0, agora - ultimoQuadroNs);
         ultimoQuadroNs = agora;
-        tempoAcumuladoNs += Math.min(decorrido, PASSO_MOVIMENTO_NS);
+        long tempoSimulado = Math.min(decorrido, PASSO_MOVIMENTO_NS);
+        turboRestanteNs = Math.max(0, turboRestanteNs - tempoSimulado);
+        lentoRestanteNs = Math.max(0, lentoRestanteNs - tempoSimulado);
+        multiplicadorRestanteNs = Math.max(0, multiplicadorRestanteNs - tempoSimulado);
+        tempoAcumuladoNs += Math.min(decorrido, intervaloMovimentoNs());
 
         // Converte o tempo acumulado em passos discretos de movimento.
-        while (tempoAcumuladoNs >= PASSO_MOVIMENTO_NS && estado == Estado.JOGANDO) {
-            tempoAcumuladoNs -= PASSO_MOVIMENTO_NS;
+        while (tempoAcumuladoNs >= intervaloMovimentoNs() && estado == Estado.JOGANDO) {
+            tempoAcumuladoNs -= intervaloMovimentoNs();
             moverUmaCelula();
         }
         repaint();
@@ -245,21 +264,108 @@ public class PainelJogo extends JPanel {
         cobrinha.mover();
 
         // Aplica primeiro as condições de derrota antes de verificar a comida.
-        if (cobrinha.getX() < 0 || cobrinha.getX() >= COLUNAS
-                || cobrinha.getY() < 0 || cobrinha.getY() >= LINHAS
-                || cobrinha.colidiuComProprioCorpo()) {
-            estado = Estado.FIM;
-            temporizador.stop();
-            return;
+        boolean colidiuNaParede = cobrinha.getX() < 0 || cobrinha.getX() >= COLUNAS
+                || cobrinha.getY() < 0 || cobrinha.getY() >= LINHAS;
+        boolean colidiuComOCorpo = cobrinha.colidiuComProprioCorpo();
+        if (colidiuNaParede || colidiuComOCorpo) {
+            if (escudoAtivo) {
+                escudoAtivo = false;
+                if (colidiuNaParede) {
+                    cobrinha.envolverNasBordas(COLUNAS, LINHAS);
+                }
+            } else {
+                estado = Estado.FIM;
+                temporizador.stop();
+                return;
+            }
         }
 
         // Comer aumenta a cobrinha e a pontuação, e reposiciona a comida.
         if (cobrinha.getX() == comida.getX() && cobrinha.getY() == comida.getY()) {
-            cobrinha.crescer();
-            pontuacao += 10;
-            inicioFeedbackPontuacaoNs = System.nanoTime();
+            Comida.TipoFruta frutaConsumida = comida.getTipo();
+            long agora = System.nanoTime();
+            cobrinha.crescer(
+                    frutaConsumida == Comida.TipoFruta.MACA
+                            || frutaConsumida == Comida.TipoFruta.ESPECIAL
+                            ? 2
+                            : 1);
+            switch (frutaConsumida) {
+                case LARANJA:
+                    turboRestanteNs = DURACAO_PODER_NS;
+                    lentoRestanteNs = 0;
+                    break;
+                case LIMAO:
+                    escudoAtivo = true;
+                    break;
+                case UVA:
+                    multiplicadorRestanteNs = DURACAO_PODER_NS;
+                    break;
+                case BANANA:
+                    turboRestanteNs = 0;
+                    lentoRestanteNs = DURACAO_PODER_NS;
+                    break;
+                case CEREJA:
+                    break;
+                case KIWI:
+                    cobrinha.encolher(2);
+                    break;
+                case ESPECIAL:
+                    turboRestanteNs = DURACAO_PODER_NS;
+                    lentoRestanteNs = 0;
+                    escudoAtivo = true;
+                    multiplicadorRestanteNs = DURACAO_PODER_NS;
+                    break;
+                case MACA:
+                    break;
+                default:
+                    throw new IllegalStateException("Tipo de fruta desconhecido.");
+            }
+            int pontosBase = frutaConsumida == Comida.TipoFruta.CEREJA ? 40 : 10;
+            pontuacao += pontosBase * (multiplicadorRestanteNs > 0 ? 2 : 1);
+            inicioFeedbackPontuacaoNs = agora;
             posicionarComida();
         }
+    }
+
+    private long intervaloMovimentoNs() {
+        if (turboRestanteNs > 0) {
+            return PASSO_TURBO_NS;
+        }
+        return lentoRestanteNs > 0 ? PASSO_LENTO_NS : PASSO_MOVIMENTO_NS;
+    }
+
+    private String textoStatusPoder() {
+        if (estado != Estado.JOGANDO && estado != Estado.PAUSADO) {
+            return "SETAS / WASD PARA MOVER";
+        }
+
+        StringBuilder status = new StringBuilder();
+        if (turboRestanteNs > 0) {
+            status.append("TURBO ").append(segundosRestantes(turboRestanteNs)).append('s');
+        }
+        if (lentoRestanteNs > 0) {
+            if (status.length() > 0) {
+                status.append("  |  ");
+            }
+            status.append("LENTO ").append(segundosRestantes(lentoRestanteNs)).append('s');
+        }
+        if (multiplicadorRestanteNs > 0) {
+            if (status.length() > 0) {
+                status.append("  |  ");
+            }
+            status.append("2X ").append(segundosRestantes(multiplicadorRestanteNs)).append('s');
+        }
+        if (escudoAtivo) {
+            if (status.length() > 0) {
+                status.append("  |  ");
+            }
+            status.append("ESCUDO");
+        }
+        return status.length() == 0 ? "SETAS / WASD PARA MOVER" : status.toString();
+    }
+
+    private static int segundosRestantes(long nanos) {
+        return (int) Math.ceil(nanos / 1_000_000_000.0);
     }
 
     private void posicionarComida() {
@@ -315,8 +421,6 @@ public class PainelJogo extends JPanel {
                 getWidth(), 0, new Color(12, 20, 36));
         g2.setPaint(cabecalho);
         g2.fillRect(0, 0, getWidth(), ALTURA_CABECALHO);
-        g2.setColor(new Color(48, 65, 88));
-        g2.drawLine(0, ALTURA_CABECALHO - 1, getWidth(), ALTURA_CABECALHO - 1);
 
         g2.setColor(new Color(74, 222, 128, 24));
         g2.fillOval(8, 4, 54, 54);
@@ -331,9 +435,9 @@ public class PainelJogo extends JPanel {
         g2.drawString("SNAKE", 62, 29);
         g2.setColor(TEXTO_SECUNDARIO);
         g2.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        g2.drawString("SETAS / WASD PARA MOVER", 62, 46);
+        g2.drawString(textoStatusPoder(), 62, 46);
 
-        boolean sobreBotaoCor = botaoCor.getModel().isRollover();
+        boolean sobreBotaoCor = botaoCor.getModel().isRollover() || botaoCor.hasFocus();
         g2.setColor(sobreBotaoCor ? new Color(48, 70, 94) : new Color(29, 43, 63));
         g2.fillRoundRect(BOTAO_COR.x, BOTAO_COR.y, BOTAO_COR.width, BOTAO_COR.height, 12, 12);
         g2.setColor(sobreBotaoCor ? new Color(96, 122, 150) : new Color(48, 66, 91));
@@ -348,7 +452,9 @@ public class PainelJogo extends JPanel {
 
         int larguraCartao = 138;
         int xCartao = getWidth() - larguraCartao - 16;
-        g2.setColor(new Color(21, 34, 54));
+        g2.setPaint(new GradientPaint(
+                xCartao, 9, new Color(30, 47, 70),
+                xCartao, 55, new Color(18, 30, 49)));
         g2.fillRoundRect(xCartao, 9, larguraCartao, 46, 12, 12);
         g2.setColor(new Color(48, 66, 91));
         g2.drawRoundRect(xCartao, 9, larguraCartao, 46, 12, 12);
@@ -370,6 +476,10 @@ public class PainelJogo extends JPanel {
             g2.setFont(new Font("SansSerif", Font.BOLD, 17));
             g2.drawString(String.format("%03d", pontuacao), xCartao + 12, 46);
         }
+        g2.setColor(estado == Estado.JOGANDO
+                ? new Color(74, 222, 128, 36)
+                : new Color(148, 163, 184, 28));
+        g2.fillOval(xCartao + larguraCartao - 29, 15, 18, 18);
         g2.setColor(estado == Estado.JOGANDO ? DESTAQUE : TEXTO_SECUNDARIO);
         g2.fillOval(xCartao + larguraCartao - 24, 20, 8, 8);
 
@@ -379,6 +489,16 @@ public class PainelJogo extends JPanel {
                 0, ALTURA_CABECALHO, new Color(20, 33, 54),
                 0, ALTURA_CABECALHO + altura, new Color(13, 23, 40));
         g2.setPaint(tabuleiroGradiente);
+        g2.fillRect(0, ALTURA_CABECALHO, largura, altura);
+
+        g2.setPaint(new RadialGradientPaint(
+                new Point2D.Float(largura / 2f, ALTURA_CABECALHO + altura / 2f),
+                largura * 0.78f,
+                new float[] {0f, 1f},
+                new Color[] {
+                    new Color(74, 222, 128, 22),
+                    new Color(74, 222, 128, 0)
+                }));
         g2.fillRect(0, ALTURA_CABECALHO, largura, altura);
 
         g2.setColor(CELULA_ALTERNADA);
@@ -453,7 +573,7 @@ public class PainelJogo extends JPanel {
         Graphics2D tabuleiro = (Graphics2D) g2.create();
         tabuleiro.translate(0, ALTURA_CABECALHO);
         double progresso = estado == Estado.JOGANDO
-                ? (double) tempoAcumuladoNs / PASSO_MOVIMENTO_NS
+                ? (double) tempoAcumuladoNs / intervaloMovimentoNs()
                 : 1.0;
         // Usa polimorfismo para desenhar a cobrinha e a comida no espaço do tabuleiro.
         for (ElementoJogo elemento : elementos) {
@@ -492,7 +612,9 @@ public class PainelJogo extends JPanel {
 
         g2.setColor(new Color(0, 0, 0, 100));
         g2.fillRoundRect(cartaoX, cartaoY + 7, cartaoLargura, cartaoAltura, 24, 24);
-        g2.setColor(CARTAO);
+        g2.setPaint(new GradientPaint(
+                cartaoX, cartaoY, new Color(28, 44, 66),
+                cartaoX, cartaoY + cartaoAltura, CARTAO));
         g2.fillRoundRect(cartaoX, cartaoY, cartaoLargura, cartaoAltura, 24, 24);
         g2.setColor(new Color(48, 66, 91));
         g2.drawRoundRect(cartaoX, cartaoY, cartaoLargura, cartaoAltura, 24, 24);
@@ -530,6 +652,8 @@ public class PainelJogo extends JPanel {
             dica = "Tente outra vez e supere sua pontua\u00e7\u00e3o.";
         }
 
+        g2.setColor(new Color(74, 222, 128, 18));
+        g2.fillRoundRect((getWidth() - 166) / 2, cartaoY + 22, 166, 24, 12, 12);
         desenharTextoCentralizado(g2, etiqueta, cartaoY + 39, 11, Font.BOLD, DESTAQUE);
         desenharTextoCentralizado(g2, titulo, cartaoY + 79, 27, Font.BOLD, TEXTO);
         desenharTextoCentralizado(g2, detalhe, cartaoY + 106, 14, Font.PLAIN, TEXTO_SECUNDARIO);
@@ -541,10 +665,14 @@ public class PainelJogo extends JPanel {
         botaoAcao.setBounds(botaoIniciar);
         botaoAcao.setVisible(estado != Estado.JOGANDO && estado != Estado.PAUSADO);
         botaoAcao.setText("");
-        boolean sobreBotaoAcao = botaoAcao.getModel().isRollover();
-        g2.setColor(sobreBotaoAcao
-                ? new Color(48, 112, 82)
-                : new Color(36, 75, 58));
+        boolean sobreBotaoAcao = botaoAcao.getModel().isRollover() || botaoAcao.hasFocus();
+        g2.setColor(new Color(74, 222, 128, sobreBotaoAcao ? 30 : 16));
+        g2.fillRoundRect(botaoX - 3, botaoY - 3, botaoLargura + 6, 43, 15, 15);
+        g2.setPaint(new GradientPaint(
+                botaoX, botaoY,
+                sobreBotaoAcao ? new Color(48, 112, 82) : new Color(42, 91, 67),
+                botaoX, botaoY + 37,
+                sobreBotaoAcao ? new Color(36, 75, 58) : new Color(28, 60, 48)));
         g2.fillRoundRect(botaoX, botaoY, botaoLargura, 37, 12, 12);
         g2.setColor(sobreBotaoAcao
                 ? new Color(108, 190, 146)
